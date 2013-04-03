@@ -862,8 +862,9 @@ static int sd_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 	int ret = 1, disable_multi = 0, retry = 0, err = 0;
 	int try_recovery = 1, do_reinit = 0, do_remove = 0;
 	int card_no_ready = 0;
+#ifdef CONFIG_MMC_PERF_PROFILING
 	ktime_t start, diff;
-
+#endif
 	/*
 	 * Reliable writes are used to implement Forced Unit Access and
 	 * REQ_META accesses, and are supported only on MMCs.

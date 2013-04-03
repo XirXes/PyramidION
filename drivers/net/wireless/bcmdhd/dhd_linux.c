@@ -112,6 +112,14 @@ typedef struct histo_ {
 static histo_t vi_d1, vi_d2, vi_d3, vi_d4;
 #endif /* WLMEDIA_HTSF */
 
+/* Pkt filter for Rogers nat keep alive packet, we need change filter mode to filter out*/
+// packet filter for Rogers nat keep alive +++
+int filter_reverse = 1;
+module_param(filter_reverse, int, 0);
+#define DEFAULT_MAX_NUM_FILTERS	8
+int pkt_filter_element[DEFAULT_MAX_NUM_FILTERS] = {0};
+// packet filter for Rogers nat keep alive ---
+
 #if defined(SOFTAP)
 extern bool ap_cfg_running;
 extern bool ap_fw_loaded;
@@ -423,7 +431,11 @@ uint dhd_intr = TRUE;
 module_param(dhd_intr, uint, 0);
 
 /* SDIO Drive Strength (in milliamps) */
+#if defined(CONFIG_MACH_VILLEC2)
+uint dhd_sdiod_drive_strength = 3;
+#else
 uint dhd_sdiod_drive_strength = 6;
+#endif
 module_param(dhd_sdiod_drive_strength, uint, 0);
 
 /* Tx/Rx bounds */
@@ -565,6 +577,7 @@ static void dhd_set_packet_filter(int value, dhd_pub_t *dhd)
 void wl_android_set_screen_off(int off);
 dhd_pub_t *pdhd = NULL;
 #ifdef BCM4329_LOW_POWER
+int LowPowerMode = 1;
 char ip_str[32];
 bool hasDLNA = false;
 bool allowMulticast = false;
@@ -574,11 +587,11 @@ extern int wl_pattern_atoh(char *src, char *dst);
 /* HTC_CSP_END */
 static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 {
+	int is_screen_off = value;
 /* HTC_CSP_START */
 #ifdef BCM4329_LOW_POWER
 	int ignore_bcmc = 1;
 	char iovbuf[32];
-	int is_screen_off = value;
 #endif
 /* HTC_CSP_END */
 
@@ -599,17 +612,23 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 	if (dhd && dhd->up) {
 		if (value && dhd->in_suspend) {
 
+// packet filter for Rogers nat keep alive +++
+		if (filter_reverse)
+			dhd_suspend_pktfilter(dhd, value);
+// packet filter for Rogers nat keep alive ---
+
 /* HTC_CSP_START */
 #ifdef BCM4329_LOW_POWER
-             if (!hasDLNA && !allowMulticast)
-             {
+		if (LowPowerMode == 1) {
+			if (!hasDLNA && !allowMulticast) {
 				/* ignore broadcast and multicast packet*/
 				bcm_mkiovar("pm_ignore_bcmc", (char *)&ignore_bcmc,
 					4, iovbuf, sizeof(iovbuf));
 				dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
 				/* keep alive packet*/
 				dhd_set_keepalive(1);
-		      }
+			}
+		}
 #endif
 /* HTC_CSP_END */
 
@@ -631,6 +650,10 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 			} else {
 
 /* HTC_CSP_START */
+// packet filter for Rogers nat keep alive +++
+				if (filter_reverse)
+					dhd_suspend_pktfilter(dhd, value);
+// packet filter for Rogers nat keep alive ---
 				dhdhtc_update_wifi_power_mode(is_screen_off);
 				dhdhtc_update_dtim_listen_interval(is_screen_off);
 /* HTC_CSP_END */
@@ -644,13 +667,15 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 
 /* HTC_CSP_START */
 #ifdef BCM4329_LOW_POWER
+				if (LowPowerMode == 1) {
 					ignore_bcmc = 0;
-				/* Not ignore broadcast and multicast packet*/
-				bcm_mkiovar("pm_ignore_bcmc", (char *)&ignore_bcmc,
-					4, iovbuf, sizeof(iovbuf));
-				dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
-				/* Disable keep alive packet*/
-				dhd_set_keepalive(0);
+					/* Not ignore broadcast and multicast packet*/
+					bcm_mkiovar("pm_ignore_bcmc", (char *)&ignore_bcmc,
+						4, iovbuf, sizeof(iovbuf));
+					dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
+					/* Disable keep alive packet*/
+					dhd_set_keepalive(0);
+				}
 #endif
 /* HTC_CSP_END */
 
@@ -1248,7 +1273,13 @@ dhd_op_if(dhd_if_t *ifp)
 				ret = -EOPNOTSUPP;
 			} else {
 #if defined(SOFTAP)
+//BRCM APSTA START
+	#ifndef APSTA_CONCURRENT
+//BRCM APSTA END
 		if (ap_fw_loaded && !(dhd->dhd_state & DHD_ATTACH_STATE_CFG80211)) {
+//BRCM APSTA START
+	#endif
+//BRCM APSTA END
 				 /* semaphore that the soft AP CODE waits on */
 				flags = dhd_os_spin_lock(&dhd->pub);
 
@@ -1257,7 +1288,13 @@ dhd_op_if(dhd_if_t *ifp)
 				 /* signal to the SOFTAP 'sleeper' thread, wl0.1 is ready */
 				up(&ap_eth_ctl.sema);
 				dhd_os_spin_unlock(&dhd->pub, flags);
+//BRCM APSTA START
+	#ifndef APSTA_CONCURRENT
+//BRCM APSTA END
 		}
+//BRCM APSTA START
+	#endif
+//BRCM APSTA END
 #endif
 				DHD_TRACE(("\n ==== pid:%x, net_device for if:%s created ===\n\n",
 					current->pid, ifp->net->name));
@@ -1272,10 +1309,15 @@ dhd_op_if(dhd_if_t *ifp)
 		if (ifp->net != NULL) {
 			DHD_TRACE(("\n%s: got 'DHD_IF_DEL' state\n", __FUNCTION__));
 #ifdef WL_CFG80211
+            /* Even APSTA concurrent running, we still need to pass the if del info 
+               to cfg80211 for sync state flags. */
 			if (dhd->dhd_state & DHD_ATTACH_STATE_CFG80211) {
 				wl_cfg80211_notify_ifdel(ifp->net);
 			}
 #endif
+			/*HTC_CSP_START*/
+			msleep(300);
+			/*HTC_CSP_END*/
 			netif_stop_queue(ifp->net);
 			unregister_netdev(ifp->net);
 			ret = DHD_DEL_IF;	/* Make sure the free_netdev() is called */
@@ -1292,16 +1334,17 @@ dhd_op_if(dhd_if_t *ifp)
 	if (ret < 0) {
 		ifp->set_multicast = FALSE;
 		if (ifp->net) {
+#ifdef SOFTAP
+			flags = dhd_os_spin_lock(&dhd->pub);
+			if (ifp->net == ap_net_dev) {
+				ap_net_dev = NULL;   /*  NULL  SOFTAP global wl0.1 as well */
+			}
+			dhd_os_spin_unlock(&dhd->pub, flags);
+#endif /*  SOFTAP */
 			free_netdev(ifp->net);
 			ifp->net = NULL;
 		}
 		dhd->iflist[ifp->idx] = NULL;
-#ifdef SOFTAP
-		flags = dhd_os_spin_lock(&dhd->pub);
-		if (ifp->net == ap_net_dev)
-			ap_net_dev = NULL;   /*  NULL  SOFTAP global wl0.1 as well */
-		dhd_os_spin_unlock(&dhd->pub, flags);
-#endif /*  SOFTAP */
 		MFREE(dhd->pub.osh, ifp, sizeof(*ifp));
 	}
 }
@@ -1645,7 +1688,8 @@ dhd_start_xmit(struct sk_buff *skb, struct net_device *net)
 		/* if the consequent event number is over maximum number, just send HANG event. */
 		if ( txq_full_event_num >= MAX_TXQ_FULL_EVENT ) {
 			txq_full_event_num = 0;
-			net_os_send_hang_message(net);
+			printf("Too many txq full events!!!\n");
+			//net_os_send_hang_message(net); //[Broadcom 0410]Mark this line to prevent out of txq trigger hand event send out from driver
 		}
 	}
 	else {
@@ -1682,20 +1726,24 @@ dhd_txflowcontrol(dhd_pub_t *dhdp, int ifidx, bool state)
 		for (i = 0; i < DHD_MAX_IFS; i++) {
 			if (dhd->iflist[i]) {
 				net = dhd->iflist[i]->net;
-				if (state == ON)
-					netif_stop_queue(net);
-				else
-					netif_wake_queue(net);
+				if (net) {
+					if (state == ON)
+						netif_stop_queue(net);
+					else
+						netif_wake_queue(net);
+				}
 			}
 		}
 	}
 	else {
 		if (dhd->iflist[ifidx]) {
 			net = dhd->iflist[ifidx]->net;
-			if (state == ON)
-				netif_stop_queue(net);
-			else
-				netif_wake_queue(net);
+			if (net) {
+				if (state == ON)
+					netif_stop_queue(net);
+				else
+					netif_wake_queue(net);
+			}
 		}
 	}
 }
@@ -1817,6 +1865,32 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 #endif
 		/* Strip header, count, deliver upward */
 		skb_pull(skb, ETH_HLEN);
+		
+//BRCM WPSAP START
+#ifdef BRCM_WPSAP
+		/* check eap id  */
+		if (ntoh16(skb->protocol) == ETHER_TYPE_802_1X){
+#if 0
+			int plen = 0;
+			printk("@@@ got eap packet start! \n");
+			for(plen = 0; plen<len ; plen++){
+				printk("%02x ",eth[plen]);
+				if((plen + 1 )%8 == 0)
+					printk("\n");
+			}
+			printk("\n");
+			printk("@@@ got eap packet End! \n");
+#endif
+			if(eth[22] == 0x01) {//22:shit to eap identity
+				//send wps start event
+				ASSERT(dhd->iflist[ifidx]->net != NULL);
+
+				if (dhd->iflist[ifidx]->net)
+					wl_iw_send_priv_event(dhd->iflist[ifidx]->net, "WPS_START");
+			}
+		}
+#endif /* BRCM_WPSAP */
+//BRCM WPSAP END
 
 		/* Process special event packets and then discard them */
 		if (ntoh16(skb->protocol) == ETHER_TYPE_BRCM) {
@@ -2582,8 +2656,11 @@ dhd_ioctl_entry(struct net_device *net, struct ifreq *ifr, int cmd)
 	}
 #endif /* WLMEDIA_HTSF */
 
+	/* HTC_CSP_START*/
+	if(buf!=NULL){
 	bcmerror = dhd_wl_ioctl(&dhd->pub, ifidx, (wl_ioctl_t *)&ioc, buf, buflen);
-
+	}
+	/* HTC_CSP_END*/
 done:
 	dhd_check_hang(net, &dhd->pub, bcmerror);
 
@@ -2649,6 +2726,17 @@ dhd_stop(struct net_device *net)
 	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(net);
 	DHD_OS_WAKE_LOCK(&dhd->pub);
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
+
+//BRCM APSTA START
+#ifdef APSTA_CONCURRENT	
+	if (ap_net_dev != NULL)
+	{
+	    DHD_ERROR(("%s: Steve: dhd_stop but AP is ON, just return\n", __FUNCTION__));
+	    return 0;
+	}
+#endif
+//BRCM APSTA END
+
 	if (dhd->pub.up == 0) {
 		goto exit;
 	}
@@ -2827,7 +2915,7 @@ dhd_open(struct net_device *net)
 #endif
 
 	ifidx = dhd_net2idx(dhd, net);
-	DHD_TRACE(("%s: ifidx %d\n", __FUNCTION__, ifidx));
+	printf("%s: ifidx %d\n", __FUNCTION__, ifidx);
 
 #ifdef HTC_KlocWork
 	if (ifidx < 0) {
@@ -3438,12 +3526,16 @@ int ht_wsec_restrict = WLC_HT_TKIP_RESTRICT | WLC_HT_WEP_RESTRICT;
 	uint dhd_roam = 1;
 #endif
 
-#if defined(AP) || defined(WLP2P)
+//BRCM APSTA START
+#if defined(AP) || defined(WLP2P) || defined(APSTA_CONCURRENT)
+//BRCM APSTA END
 	uint32 apsta = 1; /* Enable APSTA mode */
-#endif /* defined(AP) || defined(WLP2P) || defined(DHD_BCM_WIFI_HDMI) */
+#endif /* defined(AP) || defined(WLP2P) || defined(APSTA_CONCURRENT) */
 #ifdef GET_CUSTOM_MAC_ENABLE
 	struct ether_addr ea_addr;
 #endif /* GET_CUSTOM_MAC_ENABLE */
+	uint srl = 15;
+	uint lrl = 15;
 
 	DHD_TRACE(("Enter %s\n", __func__));
 	dhd->op_mode = 0;
@@ -3502,6 +3594,18 @@ int ht_wsec_restrict = WLC_HT_TKIP_RESTRICT | WLC_HT_WEP_RESTRICT;
 #endif /* SET_RANDOM_MAC_SOFTAP */
 
 	DHD_TRACE(("Firmware = %s\n", fw_path));
+#if 1
+//BRCM APSTA START
+#ifdef APSTA_CONCURRENT
+	if (strstr(fw_path, "_apsta") == NULL) {
+		bcm_mkiovar("apsta", (char *)&apsta, 4, iovbuf, sizeof(iovbuf));
+			if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0)) < 0) {
+				DHD_ERROR(("%s APSTA for apsta_concurrent failed ret= %d\n", __FUNCTION__, ret));
+		}
+	}
+#endif
+//BRCM APSTA END
+#endif
 #if !defined(AP) && defined(WLP2P)
 	/* Check if firmware with WFD support used */
 	if (strstr(fw_path, "_p2p") != NULL) {
@@ -3654,6 +3758,11 @@ int ht_wsec_restrict = WLC_HT_TKIP_RESTRICT | WLC_HT_WEP_RESTRICT;
 		}
 	}
 
+// packet filter for Rogers nat keep alive +++
+	if (filter_reverse)
+		dhd_set_pktfilter(dhd, 1, DENY_NAT_KEEP_ALIVE, 26, "0xFFFF0000000000000000FFFFFFFF", "0xC123880000000000000011940009");
+// packet filter for Rogers nat keep alive ---
+
 #if defined(KEEP_ALIVE)
 	{
 	/* Set Keep Alive : be sure to use FW with -keepalive */
@@ -3716,13 +3825,17 @@ int ht_wsec_restrict = WLC_HT_TKIP_RESTRICT | WLC_HT_WEP_RESTRICT;
 
 #ifdef WL_CFG80211
 	setbit(eventmask, WLC_E_ESCAN_RESULT);
-	//if ((dhd->op_mode & WFD_MASK) == WFD_MASK) {
+   #ifdef PRIMOTD_NO_P2P
+	if ((dhd->op_mode & WFD_MASK) == WFD_MASK) {
+   #endif
 		setbit(eventmask, WLC_E_ACTION_FRAME_RX);
 		setbit(eventmask, WLC_E_ACTION_FRAME_COMPLETE);
 		setbit(eventmask, WLC_E_ACTION_FRAME_OFF_CHAN_COMPLETE);
 		setbit(eventmask, WLC_E_P2P_PROBREQ_MSG);
 		setbit(eventmask, WLC_E_P2P_DISC_LISTEN_COMPLETE);
-	//}
+   #ifdef PRIMOTD_NO_P2P
+	}
+   #endif
 #endif /* WL_CFG80211 */
 
 	/* Write updated Event mask */
@@ -3816,6 +3929,10 @@ int ht_wsec_restrict = WLC_HT_TKIP_RESTRICT | WLC_HT_WEP_RESTRICT;
 	ret = 1;
 	bcm_mkiovar("tc_enable", (char *)&ret, 4, iovbuf, sizeof(iovbuf));
 	dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
+
+	/* set srl and lrl */
+	dhd_wl_ioctl_cmd(dhd, WLC_SET_SRL, (char *)&srl, sizeof(srl), TRUE, 0);
+	dhd_wl_ioctl_cmd(dhd, WLC_SET_LRL, (char *)&lrl, sizeof(lrl), TRUE, 0);
 /* HTC_CSP_END */
 
 done:
@@ -4735,7 +4852,13 @@ dhd_wl_host_event(dhd_info_t *dhd, int *ifidx, void *pktdata,
 		return (bcmerror);
 
 #if defined(CONFIG_WIRELESS_EXT)
-	if (event->bsscfgidx == 0) {
+	if (
+//BRCM APSTA START
+#if defined(APSTA_CONCURRENT) && defined(SOFTAP)
+		!ap_net_dev && 
+#endif
+//BRCM APSTA END
+		event->bsscfgidx == 0) {
 		/*
 		 * Wireless ext is on primary interface only
 		 */
@@ -4747,6 +4870,15 @@ dhd_wl_host_event(dhd_info_t *dhd, int *ifidx, void *pktdata,
 			wl_iw_event(dhd->iflist[*ifidx]->net, event, *data);
 		}
 	}
+//BRCM APSTA START
+#if defined(APSTA_CONCURRENT) && defined(SOFTAP)
+	if ( dhd->iflist[*ifidx]->net && (dhd->iflist[*ifidx]->net == ap_net_dev)){
+		wl_iw_event(dhd->iflist[*ifidx]->net, event, *data);
+		printf("%s: don't route event to wl_cfg80211 if the net_dev is ap_net_dev\n", __FUNCTION__);
+		return BCME_OK;
+	}
+#endif
+//BRCM APSTA END
 #endif /* defined(CONFIG_WIRELESS_EXT)  */
 
 #ifdef WL_CFG80211
@@ -4762,7 +4894,8 @@ dhd_wl_host_event(dhd_info_t *dhd, int *ifidx, void *pktdata,
 
 	ASSERT(dhd->iflist[*ifidx] != NULL);
 	ASSERT(dhd->iflist[*ifidx]->net != NULL);
-	if (dhd->iflist[*ifidx]->net) {
+
+	if ((dhd->pub.op_mode == WFD_MASK) || ((*ifidx == 0) && dhd->iflist[*ifidx]->net)) {
 		wl_cfg80211_event(dhd->iflist[*ifidx]->net, event, *data);
 	}
 #endif /* defined(WL_CFG80211) */
@@ -5082,6 +5215,16 @@ int net_os_send_hang_message(struct net_device *dev)
 	return ret;
 }
 
+bool check_hang_already(struct net_device *dev)
+{
+	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
+
+	if (dhd->pub.hang_was_sent)
+		return TRUE;
+	else
+		return FALSE;
+}
+
 /* HTC_CSP_START */
 #if defined(CONFIG_WIRELESS_EXT)
 void dhd_info_send_hang_message(dhd_pub_t *dhdp)
@@ -5109,7 +5252,8 @@ int net_os_send_rssilow_message(struct net_device *dev)
         }
 
         if (dhd) {
-                ret = wl_iw_send_priv_event(dev, "RSSI_LOW_IND");
+               /* ret = wl_iw_send_priv_event(dev, "RSSI_LOW_IND");*/
+			   ret = wl_cfg80211_rssilow(dev);
         }
         return ret;
 }
@@ -5973,4 +6117,71 @@ int dhd_get_txrx_stats(struct net_device *net, unsigned long *rx_packets, unsign
 
 	return 0;
 }
+
+// packet filter for Rogers nat keep alive +++
+void dhd_suspend_pktfilter(dhd_pub_t * dhd, int suspend)
+{
+	wl_pkt_filter_enable_t	enable_parm;
+	int i, pkt_id = 0;
+	char buf[256];
+	uint filter_mode = 0;
+
+	printk("Enter set packet filter in %s\n", suspend?"suspend":"resume");
+
+	/* when suspend, enable id > 200, disable id < 200. vice vesa */
+
+	if (suspend) {
+		for (i = 0; i < DEFAULT_MAX_NUM_FILTERS; i++) {
+			pkt_id = pkt_filter_element[i];
+			if (pkt_id) {
+				if (pkt_id < 200) {
+					/* disable it!! */
+					enable_parm.id = htod32(pkt_id);
+					enable_parm.enable = htod32(0);
+					bcm_mkiovar("pkt_filter_enable", (char *)&enable_parm,
+						sizeof(wl_pkt_filter_enable_t), buf, sizeof(buf));
+					dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, buf, sizeof(buf), TRUE, 0);
+				} else {
+					/* enable it!! */
+					enable_parm.id = htod32(pkt_id);
+					enable_parm.enable = htod32(1);
+					bcm_mkiovar("pkt_filter_enable", (char *)&enable_parm,
+						sizeof(wl_pkt_filter_enable_t), buf, sizeof(buf));
+					dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, buf, sizeof(buf), TRUE, 0);
+				}
+			}
+		}
+
+		bcm_mkiovar("pkt_filter_mode", (char *)&filter_mode, 4, buf, sizeof(buf));
+		dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, buf, sizeof(buf), TRUE, 0);
+	} else {
+		for (i = 0; i < DEFAULT_MAX_NUM_FILTERS; i++) {
+			pkt_id = pkt_filter_element[i];
+			if (pkt_id) {
+				if (pkt_id >= 200) {
+					/* disable it!! */
+					enable_parm.id = htod32(pkt_id);
+					enable_parm.enable = htod32(0);
+					bcm_mkiovar("pkt_filter_enable", (char *)&enable_parm,
+						sizeof(wl_pkt_filter_enable_t), buf, sizeof(buf));
+					dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, buf, sizeof(buf), TRUE, 0);
+				} else {
+					/* enable it!! */
+					enable_parm.id = htod32(pkt_id);
+					enable_parm.enable = htod32(1);
+					bcm_mkiovar("pkt_filter_enable", (char *)&enable_parm,
+						sizeof(wl_pkt_filter_enable_t), buf, sizeof(buf));
+					dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, buf, sizeof(buf), TRUE, 0);
+				}
+			}
+		}
+
+		filter_mode = 1;
+		bcm_mkiovar("pkt_filter_mode", (char *)&filter_mode, 4, buf, sizeof(buf));
+		dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, buf, sizeof(buf), TRUE, 0);
+	}
+
+	return;
+}
+// packet filter for Rogers nat keep alive ---
 /* HTC_CSP_END */

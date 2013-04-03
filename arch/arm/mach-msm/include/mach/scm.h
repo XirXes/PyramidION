@@ -21,6 +21,7 @@
 #define SCM_SVC_SSD			0x7
 #define SCM_SVC_FUSE			0x8
 #define SCM_SVC_PWR			0x9
+#define SCM_SVC_CP			0xC
 #define SCM_SVC_TZSCHEDULER		0xFC
 #define SCM_SVC_OEM				0xFE
 
@@ -30,6 +31,7 @@
 #define TZ_HTC_SVC_MEMPROT				0x15
 #define TZ_HTC_SVC_LOG_OPERATOR			0x16
 #define TZ_HTC_SVC_ACCESS_ITEM			0x1A
+#define TZ_HTC_SVC_3RD_PARTY			0x1B
 
 #define ITEM_MDM9K_SERIAL		0
 #define ITEM_CRYPTO_RAMDUMP		1
@@ -61,6 +63,7 @@ extern int secure_memprot(void);
 extern int secure_log_operation(unsigned int address, unsigned int size,
 		unsigned int buf_addr, unsigned int buf_len, int revert);
 extern int secure_access_item(unsigned int is_write, unsigned int id, unsigned int buf_len, unsigned char *buf);
+extern int secure_3rd_party_syscall(unsigned int id, unsigned char *buf, int len);
 
 #else
 

@@ -1,3 +1,6 @@
+source "drivers/video/msm/sii9234/Kconfig"
+source "drivers/video/msm/vidc/Kconfig"
+
 
 source "drivers/video/msm/vidc/Kconfig"
 
@@ -396,6 +399,10 @@ config FB_MSM_MIPI_PANEL_DETECT
 	select FB_MSM_MIPI_CHIMEI_WXGA
 	select FB_MSM_MIPI_NOVATEK_CMD_HVGA_PT
 	select FB_MSM_MIPI_SAMSUNG_CMD_HVGA_PT
+	select FB_MSM_MIPI_RENESAS_CMD_WVGA_PT
+	select FB_MSM_MIPI_NOVATEK_CMD_QHD_PT
+	select FB_MSM_MIPI_HIMAX_VIDEO_720P_PT
+	select FB_MSM_MIPI_ORISE_CMD_QHD_PT
 	---help---
 	  Support for MIPI panel auto detect
 
@@ -701,3 +708,88 @@ config FB_MSM_DEFAULT_DEPTH_RGBA8888
 endchoice
 
 endif
+
+config FB_MSM_LEGACY_MDP
+	bool
+	depends on FB_MSM && (MSM_MDP30 || MSM_MDP31 || MSM_MDP302)
+	default y
+
+config FB_MSM_MDP_PPP
+	bool
+	depends on FB_MSM_LEGACY_MDP
+	default y
+
+config FB_MSM_MDP_ABL
+        bool "Support QCT auto backlight scaling"
+        depends on FB_MSM && (MSM_MDP40)
+        default n
+
+choice
+	prompt "Default framebuffer color depth"
+	depends on MSM_MDP40 || MSM_MDP31
+	default FB_MSM_8X60_DEFAULT_DEPTH_RGBA8888
+
+config FB_MSM_8X60_DEFAULT_DEPTH_RGB565
+	bool "16 bits per pixel (RGB565)"
+
+config FB_MSM_8X60_DEFAULT_DEPTH_ARGB8888
+	bool "32 bits per pixel (ARGB8888)"
+
+config FB_MSM_8X60_DEFAULT_DEPTH_RGBA8888
+	bool "32 bits per pixel (RGBA8888)"
+
+endchoice
+
+config FB_MSM_SELF_REFRESH
+	bool "Use self refresh"
+	depends on FB_MSM
+	default n
+
+config MSM_DSI_CLK_AUTO_CALCULATE
+	bool "Use AUTO calculate"
+	depends on FB_MSM_MIPI_DSI
+	default n
+
+config FB_MSM_MIPI_DSI_HIMAX
+	bool
+	select FB_MSM_MIPI_DSI
+	default n
+
+config FB_MSM_MIPI_DSI_ORISE
+	bool
+	select FB_MSM_MIPI_DSI
+	default n
+
+config FB_MSM_LCDC_AUO_WXGA
+	bool
+	select FB_MSM_LCDC_PANEL
+	default y if MACH_VERDI_LTE
+
+config FB_MSM_MIPI_RENESAS_VIDEO_WVGA_PT
+	bool
+	select FB_MSM_MIPI_DSI_RENESAS
+	default n
+
+config FB_MSM_MIPI_RENESAS_CMD_WVGA_PT
+	bool
+	select FB_MSM_MIPI_DSI_RENESAS
+	default n
+
+config FB_MSM_MIPI_ORISE_CMD_QHD_PT
+	bool
+	select FB_MSM_MIPI_DSI_ORISE
+	default n
+
+config FB_MSM_MIPI_HIMAX_VIDEO_720P_PT
+	bool
+	select FB_MSM_MIPI_DSI_HIMAX
+	default n
+
+config FB_MSM_MIPI_HIMAX_CMD_720P_PT
+	bool
+	select FB_MSM_MIPI_DSI_HIMAX
+	default n
+
+config LCDC_TURN_ON_BL_AFTER_PANEL_ON
+	bool "Turn On BL again after turn on LCDC panel"
+	default n

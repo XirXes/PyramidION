@@ -735,12 +735,12 @@ static long aic3254_ioctl(struct file *file, unsigned int cmd,
 		}
 
 		pr_aud_info("%s: parameters(%d, %d, %p)\n", __func__,
-				para.row_num, para.col_num, para.cmd_data);
+					para.row_num, para.col_num, para.cmd_data);
 		if (cmd == AIC3254_SET_TX_PARAM)
 			table = aic3254_uplink[0];
 		else
 			table = aic3254_downlink[0];
-
+		
 		/* confirm indicated size doesn't exceed the allocated one */
 		if (para.row_num > IO_CTL_ROW_MAX
 				|| para.col_num != IO_CTL_COL_MAX) {
@@ -781,7 +781,7 @@ static long aic3254_ioctl(struct file *file, unsigned int cmd,
 					" memory (%d,%d)\n", __func__,
 					MINIDSP_ROW_MAX, MINIDSP_COL_MAX);
 			return -EFAULT;
-			}
+		}
 
 		mem_size = para.row_num * para.col_num * sizeof(CODEC_SPI_CMD);
 		if (copy_from_user(table, para.cmd_data, mem_size)) {
@@ -911,7 +911,7 @@ static long aic3254_ioctl(struct file *file, unsigned int cmd,
 		}
 		pr_aud_info("%s: index %d for LOOPBACK\n", __func__, i);
 		aic3254_loopback(i);
-		break;
+		break;	
 	default:
 		pr_aud_err("%s: invalid command %d\n", __func__, _IOC_NR(cmd));
 		ret = -EINVAL;
@@ -976,6 +976,7 @@ static int spi_aic3254_probe(struct spi_device *aic3254)
 	aic3254_downlink = init_2d_array(IO_CTL_ROW_MAX, IO_CTL_COL_MAX);
 	aic3254_minidsp = init_2d_array(MINIDSP_ROW_MAX, MINIDSP_COL_MAX);
 	bulk_tx = kcalloc(MINIDSP_COL_MAX * 2 , sizeof(uint8_t), GFP_KERNEL);
+
 	spin_lock_init(&spinlock);
 	return 0;
 }

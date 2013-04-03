@@ -777,6 +777,10 @@ sdioh_request_byte(sdioh_info_t *sd, uint rw, uint func, uint regaddr, uint8 *by
 	int err_ret = 0; /* HTC_KlocWork */
 
 	sd_info(("%s: rw=%d, func=%d, addr=0x%05x\n", __FUNCTION__, rw, func, regaddr));
+	if (!gInstance->func[func]) {
+		sd_err(("func %d at %s is null\n", func, __func__));
+		return SDIOH_API_RC_FAIL;
+	}
 
 	DHD_PM_RESUME_WAIT(sdioh_request_byte_wait);
 	DHD_PM_RESUME_RETURN_ERROR(SDIOH_API_RC_FAIL);
@@ -864,6 +868,10 @@ sdioh_request_word(sdioh_info_t *sd, uint cmd_type, uint rw, uint func, uint add
 		sd_err(("%s: Only CMD52 allowed to F0.\n", __FUNCTION__));
 		return SDIOH_API_RC_FAIL;
 	}
+	if (!gInstance->func[func]) {
+		sd_err(("func %d at %s is null\n", func, __func__));
+		return SDIOH_API_RC_FAIL;
+	}
 
 	sd_info(("%s: cmd_type=%d, rw=%d, func=%d, addr=0x%05x, nbytes=%d\n",
 	         __FUNCTION__, cmd_type, rw, func, addr, nbytes));
@@ -913,6 +921,11 @@ sdioh_request_packet(sdioh_info_t *sd, uint fix_inc, uint write, uint func,
 	void *pnext;
 
 	sd_trace(("%s: Enter\n", __FUNCTION__));
+
+	if (!gInstance->func[func]) {
+		sd_err(("func %d at %s is null\n", func, __func__));
+		return SDIOH_API_RC_FAIL;
+	}
 
 	ASSERT(pkt);
 	DHD_PM_RESUME_WAIT(sdioh_request_packet_wait);
@@ -1003,6 +1016,11 @@ sdioh_request_buffer(sdioh_info_t *sd, uint pio_dma, uint fix_inc, uint write, u
 	void *mypkt = NULL;
 
 	sd_trace(("%s: Enter\n", __FUNCTION__));
+
+	if (!gInstance->func[func]) {
+		sd_err(("func %d at %s is null\n", func, __func__));
+		return SDIOH_API_RC_FAIL;
+	}
 
 	DHD_PM_RESUME_WAIT(sdioh_request_buffer_wait);
 	DHD_PM_RESUME_RETURN_ERROR(SDIOH_API_RC_FAIL);

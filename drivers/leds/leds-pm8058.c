@@ -27,6 +27,10 @@
 #include <mach/htc_headset_misc.h>
 #endif
 
+#ifdef CONFIG_TOUCHSCREEN_CYPRESS_SWEEP2WAKE
+#include <linux/cy8c_tma_ts.h>
+#endif
+
 #ifdef CONFIG_HTC_HEADSET_MISC
 #define charming_led_enable(enable) headset_indicator_enable(enable)
 #else
@@ -150,7 +154,7 @@ static void pm8058_pwm_led_brightness_set(struct led_classdev *led_cdev,
 	}
 }
 
-static void pm8058_drvx_led_brightness_set(struct led_classdev *led_cdev,
+void pm8058_drvx_led_brightness_set(struct led_classdev *led_cdev,
 					   enum led_brightness brightness)
 {
 	struct pm8058_led_data *ldata;
@@ -184,6 +188,10 @@ static void pm8058_drvx_led_brightness_set(struct led_classdev *led_cdev,
 		milliamps = (ldata->flags & PM8058_LED_DYNAMIC_BRIGHTNESS_EN) ?
 			    ldata->out_current * brightness / LED_FULL :
 			    ldata->out_current;
+
+		printk(KERN_INFO "%s: flags %d current %d\n", __func__,
+			ldata->flags, milliamps);
+
 		pm8058_pwm_config_led(ldata->pwm_led, id, mode, milliamps);
 		if (ldata->flags & PM8058_LED_LTU_EN) {
 			pduties = &duties[ldata->start_index];
@@ -383,7 +391,7 @@ static ssize_t pm8058_led_off_timer_store(struct device *dev,
 	sec = -1;
 	sscanf(buf, "%d %d", &min, &sec);
 
-	if (min < 0 || min > 255)
+	if (min < 0 || min > 255 || min == 5)
 		return -EINVAL;
 	if (sec < 0 || sec > 255)
 		return -EINVAL;
@@ -591,6 +599,13 @@ static int pm8058_led_probe(struct platform_device *pdev)
 			goto err_register_attr_currents;
 		}
 	}
+
+#ifdef CONFIG_TOUCHSCREEN_CYPRESS_SWEEP2WAKE
+	if (!strcmp(pdata->led_config[2].name, "button-backlight")) {
+		sweep2wake_setleddev(&ldata[2].ldev);
+		printk(KERN_INFO "[sweep2wake]: set led device %s, bank %d\n", pdata->led_config[2].name, ldata[2].bank);
+	}
+#endif
 
 	return 0;
 

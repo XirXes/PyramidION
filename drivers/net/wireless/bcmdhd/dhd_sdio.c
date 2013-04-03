@@ -549,6 +549,10 @@ dhdsdio_htclk(dhd_bus_t *bus, bool on, bool pendok)
 
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
+	if (!bus) {
+		DHD_ERROR(("%s: bus is null\n", __FUNCTION__));
+		goto error;
+	}
 #if defined(OOB_INTR_ONLY)
 	pendok = FALSE;
 #endif
@@ -569,9 +573,18 @@ dhdsdio_htclk(dhd_bus_t *bus, bool on, bool pendok)
 			goto error;
 		}
 
+		if (!(bus->sih)) {
+			DHD_ERROR(("%s: bus->sih is null\n", __FUNCTION__));
+			goto error;
+		}
+
 		if (pendok &&
 		    ((bus->sih->buscoretype == PCMCIA_CORE_ID) && (bus->sih->buscorerev == 9))) {
 			uint32 dummy, retries;
+			if (!(bus->regs)) {
+				DHD_ERROR(("%s: bus->regs is null\n", __FUNCTION__));
+				goto error;
+			}
 			R_SDREG(dummy, &bus->regs->clockctlstatus, retries);
 		}
 
@@ -4455,13 +4468,12 @@ dhdsdio_dpc(dhd_bus_t *bus)
 
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
-#ifndef OOB_INTR_ONLY
 	if (bus->dhd->busstate == DHD_BUS_DOWN) {
 		DHD_ERROR(("%s: Bus down, ret\n", __FUNCTION__));
 		bus->intstatus = 0;
 		return 0;
 	}
-#endif
+
 	/* Start with leftover status bits */
 	intstatus = bus->intstatus;
 
@@ -5269,7 +5281,7 @@ dhdsdio_probe(uint16 venid, uint16 devid, uint16 bus_no, uint16 slot,
 	sd1idle = TRUE;
 	dhd_readahead = TRUE;
 	retrydata = FALSE;
-	dhd_doflow = FALSE;
+	dhd_doflow = TRUE;	//Broadcom 0413
 	dhd_dongle_memsize = 0;
 	dhd_txminmax = DHD_TXMINMAX;
 
@@ -5519,7 +5531,7 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 	/* si_attach() will provide an SI handle and scan the backplane */
 	if (!(bus->sih = si_attach((uint)devid, osh, regsva, DHD_BUS, sdh,
 	                           &bus->vars, &bus->varsz))) {
-		DHD_ERROR(("%s: si_attach failed!\n", __func__));
+		DHD_ERROR(("%s: si_attach failed!\n", __FUNCTION__));
 		goto fail;
 	}
 
@@ -6345,14 +6357,14 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 			bus->dhd->up = FALSE;
 			dhd_os_sdunlock(dhdp);
 
-			DHD_TRACE(("%s:  WLAN OFF DONE\n", __FUNCTION__));
+			printf("%s:  WLAN OFF DONE\n", __FUNCTION__);
 			/* App can now remove power from device */
 		} else
 			bcmerror = BCME_SDIO_ERROR;
 	} else {
 		/* App must have restored power to device before calling */
 
-		DHD_TRACE(("\n\n%s: == WLAN ON ==\n", __FUNCTION__));
+		printf("\n\n%s: == WLAN ON ==\n", __FUNCTION__);
 
 		if (bus->dhd->dongle_reset) {
 			/* Turn on WLAN */
@@ -6387,7 +6399,7 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 #endif 
 						dhd_os_wd_timer(dhdp, dhd_watchdog_ms);
 
-						DHD_TRACE(("%s: WLAN ON DONE\n", __FUNCTION__));
+						printf("%s: WLAN ON DONE\n", __FUNCTION__);
 					} else {
 						dhd_bus_stop(bus, FALSE);
 						dhdsdio_release_dongle(bus, bus->dhd->osh,
@@ -6403,9 +6415,9 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 #endif /* DHDTHREAD */
 		} else {
 			bcmerror = BCME_SDIO_ERROR;
-			DHD_INFO(("%s called when dongle is not in reset\n",
-				__FUNCTION__));
-			DHD_INFO(("Will call dhd_bus_start instead\n"));
+			printf("%s called when dongle is not in reset\n",
+				__FUNCTION__);
+			printf("Will call dhd_bus_start instead\n");
 			sdioh_start(NULL, 1);
 			if ((bcmerror = dhd_bus_start(dhdp)) != 0)
 				DHD_ERROR(("%s: dhd_bus_start fail with %d\n",

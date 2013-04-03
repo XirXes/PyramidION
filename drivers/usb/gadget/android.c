@@ -2049,10 +2049,19 @@ static void android_usb_init_work(struct work_struct *data)
 	int ret = 0;
 	__u16 product_id;
 
+#ifdef CONFIG_SENSE_4_PLUS
+	/* initial mtp+ums+adb by default */
+	if (board_mfg_mode() != 2) {
+		ret = android_enable_function(dev, "mtp");
+		if (ret)
+			pr_err("android_usb: Cannot enable '%s'", "mtp");
+	}
+#else
 	/* initial ums+adb by default */
 	ret = android_enable_function(dev, "mass_storage");
 	if (ret)
 		pr_err("android_usb: Cannot enable '%s'", "mass_storage");
+#endif
 
 #if 0
 	ret = android_enable_function(dev, "adb");
