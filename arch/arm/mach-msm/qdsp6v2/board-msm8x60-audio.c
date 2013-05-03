@@ -1236,6 +1236,9 @@ static struct snddev_icodec_data snddev_beats_ihs_stereo_rx_data = {
 	.pamp_off = headset_disable,
 	.voltage_on = voltage_on,
 	.voltage_off = voltage_off,
+	.aic3254_id = PLAYBACK_HEADSET,
+	.aic3254_voc_id = CALL_DOWNLINK_EMIC_HEADSET,
+	.default_aic3254_id = PLAYBACK_HEADSET,
 };
 
 static struct platform_device msm_beats_headset_stereo_device = {
@@ -1252,6 +1255,9 @@ static struct snddev_icodec_data snddev_beats_headset_mic_data = {
 	.default_sample_rate = 48000,
 	.pamp_on = ext_mic_enable,
 	.pamp_off = ext_mic_disable,
+	.aic3254_id = VOICERECOGNITION_EMIC,
+	.aic3254_voc_id = CALL_UPLINK_EMIC_HEADSET,
+	.default_aic3254_id = VOICERECORD_EMIC,
 };
 
 static struct platform_device msm_beats_headset_mic_device = {
